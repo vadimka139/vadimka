@@ -1,0 +1,439 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Распознавание языков — определи язык на изображении</title>
+
+<!-- TFJS + TeachableMachine -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8.4/dist/teachablemachine-image.min.js"></script>
+
+<style>
+  :root{
+    --accent:#2E8B57;
+    --bg:#f0f8f5;
+    --text:#1a3c34;
+    --muted:#5a7c72;
+    --card:#ffffff;
+    --bar:#e5e7eb;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+  }
+
+  header{
+    background:linear-gradient(135deg, #2E8B57 0%, #3CB371 100%); 
+    color:#fff; padding:28px 0;
+    margin-bottom:18px;
+    box-shadow: 0 4px 12px rgba(46, 139, 87, 0.2);
+  }
+  header .container{
+    max-width:1200px; margin:0 auto; padding:0 16px;
+    display:flex; align-items:center; gap:16px
+  }
+  header img{
+    height:clamp(60px, 8vw, 100px);
+    width:auto; display:block;
+    filter: brightness(0) invert(1);
+  }
+  header h1{margin:0; font-weight:800; letter-spacing:.02em; line-height:1.1}
+  header h1 small{display:block; color:#e8f5e9; font-weight:600; font-size:16px}
+  
+  header h1 .main-title{
+    color: #ffffff;
+  }
+
+  .container{max-width:1200px; margin:0 auto; padding:24px 16px 48px}
+  .grid{display:grid; grid-template-columns:360px 1fr; gap:22px}
+  @media (max-width: 768px) {
+    .grid{grid-template-columns:1fr}
+  }
+  .card{
+    background:var(--card); border-radius:14px; box-shadow:0 6px 24px rgba(0,0,0,.08);
+    padding:18px; overflow:hidden;
+    border-top: 4px solid var(--accent);
+  }
+  .card h3{margin:0 0 12px; font-size:18px; color: var(--accent);}
+  .muted{color:var(--muted)}
+
+  .btn{
+    display:inline-flex; align-items:center; gap:8px;
+    background:var(--accent); color:#fff; border:0;
+    padding:10px 14px; border-radius:10px; cursor:pointer;
+    font-weight:700; letter-spacing:.02em;
+    transition: background-color 0.3s ease;
+  }
+  .btn.camera{
+    background: #4682B4;
+  }
+  .btn.camera:hover{
+    background: #3a6d9c;
+  }
+  .btn.secondary{background:#4a6b5f;}
+  .btn:disabled{opacity:.6; cursor:not-allowed}
+
+  .controls{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px}
+  input[type="file"]{display:inline-block}
+
+  #preview, #cam canvas{
+    width:100%; height:360px; object-fit:contain; background:#f5f5f5;
+    border-radius:12px;
+    border: 2px dashed #e0e0e0;
+  }
+  #cam canvas{display:block}
+
+  .hint-box{
+    margin-top:12px;
+    background:#f0f8f5;
+    border:1px solid #c8e6c9;
+    border-radius:12px;
+    padding:12px 14px;
+  }
+  .hint-box .row{
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  }
+  .hint-box .label{min-width:140px; font-weight:700}
+  .hint-box input[type="range"]{width:200px}
+  .hint-box small{display:block; margin-top:8px; color:var(--muted); line-height:1.35}
+  .hint-box b{color:#2E8B57}
+
+  .verdict{
+    margin:8px 0 14px; padding:10px 12px; border-radius:12px;
+    background:#f0f8f5; border:1px dashed #c8e6c9;
+  }
+  .verdict b{color:#2E8B57}
+  .verdict .other{color:#d32f2f}
+
+  .row-prob{display:flex; align-items:center; gap:10px; margin:6px 0}
+  .row-prob .label{width:120px; font-weight:600}
+  .row-prob .bar{position:relative; flex:1; height:16px; background:var(--bar);
+                border-radius:999px; overflow:hidden}
+  .row-prob .bar > span{position:absolute; inset:0 auto 0 0; width:0%;
+                       background:linear-gradient(90deg, var(--accent), #5cb85c)}
+  .row-prob .val{width:64px; text-align:right; font-variant-numeric:tabular-nums}
+  
+  .error-box {
+    background: #ffebee;
+    border: 1px solid #f44336;
+    border-radius: 8px;
+    padding: 12px;
+    margin: 10px 0;
+    color: #c62828;
+  }
+  
+  .test-image {
+    width: 100px;
+    height: 60px;
+    object-fit: cover;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: border-color 0.3s;
+  }
+  .test-image:hover {
+    border-color: var(--accent);
+  }
+</style>
+
+<header>
+  <div class="container">
+    <!-- Замените на свою иконку или используйте текст -->
+    <div style="color: white; font-size: 48px;">🌐</div>
+    <h1>
+      <span class="main-title">Определи язык</span>
+      <small>Распознавание языков на изображениях</small>
+    </h1>
+  </div>
+</header>
+
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h3>📤 Ввод изображения</h3>
+      <div class="controls">
+        <button id="btn" class="btn camera">📷 Запустить камеру</button>
+        <label class="btn secondary" for="file">📁 Выбрать файл</label>
+        <input id="file" type="file" accept="image/*" style="display:none">
+      </div>
+
+      <div id="cam"></div>
+      <img id="preview" alt="Предпросмотр изображения" style="display:none">
+
+      <!-- Тестовые изображения -->
+      <div style="margin-top: 15px;">
+        <p style="margin-bottom: 8px; font-weight: 600;">Тестовые изображения:</p>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+          <img src="https://via.placeholder.com/100x60/4CAF50/white?text=EN" class="test-image" data-lang="Английский" onclick="loadTestImage(this.src, this.dataset.lang)">
+          <img src="https://via.placeholder.com/100x60/2196F3/white?text=RU" class="test-image" data-lang="Русский" onclick="loadTestImage(this.src, this.dataset.lang)">
+          <img src="https://via.placeholder.com/100x60/FF9800/white?text=ES" class="test-image" data-lang="Испанский" onclick="loadTestImage(this.src, this.dataset.lang)">
+        </div>
+      </div>
+
+      <div class="hint-box">
+        <div class="row">
+          <span class="label">Порог уверенности:</span>
+          <input id="th" type="range" min="0.30" max="0.95" step="0.01" value="0.65">
+          <b id="thVal">0.65</b>
+        </div>
+        <small>Если условия не выполняются — итогом будет <b>«Другой язык»</b>.</small>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>📊 Результаты распознавания</h3>
+      <div id="status" class="muted">Загружаю модель…</div>
+      <div id="error-message" style="display:none"></div>
+
+      <div class="verdict" id="verdict" style="display:none"></div>
+      <div id="probs"></div>
+      
+      <!-- Демо-режим -->
+      <div id="demo-mode" style="display:none; margin-top: 20px; padding: 15px; background: #e3f2fd; border-radius: 8px;">
+        <h4 style="margin-top: 0; color: #1565c0;">🔧 Демо-режим</h4>
+        <p>Модель не загружена. Используйте тестовые изображения для демонстрации интерфейса.</p>
+        <button onclick="showDemoResults()" class="btn" style="background: #1565c0;">Показать демо-результаты</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Глобальные переменные
+let THRESHOLD = 0.65;
+const MARGIN_MIN = 0.10;
+const ENTROPY_MAX = 1.2;
+
+// Элементы DOM
+const btn = document.getElementById('btn');
+const file = document.getElementById('file');
+const camWrap = document.getElementById('cam');
+const preview = document.getElementById('preview');
+const statusEl = document.getElementById('status');
+const verdictEl = document.getElementById('verdict');
+const probsEl = document.getElementById('probs');
+const errorMsgEl = document.getElementById('error-message');
+const demoModeEl = document.getElementById('demo-mode');
+
+let model, webcam, raf;
+let isDemoMode = false;
+
+// Инициализация
+document.getElementById('thVal').textContent = THRESHOLD.toFixed(2);
+document.getElementById('th').addEventListener('input', e => {
+  THRESHOLD = Number(e.target.value);
+  document.getElementById('thVal').textContent = THRESHOLD.toFixed(2);
+  if (!isDemoMode) updatePrediction();
+});
+
+// Загрузка модели
+(async () => {
+    try {
+      statusEl.innerHTML = '🔄 Загружаю модель...';
+      model = await tmImage.load(`model.json`, `metadata.json`);
+      statusEl.innerHTML = '✅ Модель загружена! Выберите файл или запустите камеру';
+    } catch (e) {
+      statusEl.innerHTML = '❌ Ошибка загрузки модели';
+      console.error('LOAD ERROR:', e);
+    }
+})();
+
+function showError(message) {
+  errorMsgEl.innerHTML = `<div class="error-box">⚠️ ${message}</div>`;
+  errorMsgEl.style.display = 'block';
+}
+
+function enableDemoMode() {
+  isDemoMode = true;
+  demoModeEl.style.display = 'block';
+  statusEl.textContent = 'Демо-режим: используйте тестовые изображения';
+}
+
+function showDemoResults() {
+  const demoPredictions = [
+    { className: 'Английский', probability: 0.85 },
+    { className: 'Русский', probability: 0.10 },
+    { className: 'Испанский', probability: 0.05 }
+  ];
+  
+  renderVerdict(demoPredictions);
+  renderBars(demoPredictions);
+}
+
+function loadTestImage(src, lang) {
+  if (raf) cancelAnimationFrame(raf);
+  if (webcam) webcam.stop();
+  
+  camWrap.innerHTML = '';
+  preview.style.display = 'block';
+  preview.src = src;
+  
+  if (isDemoMode) {
+    // В демо-режиме показываем фиктивные результаты
+    setTimeout(() => {
+      const demoProbs = [
+        { className: lang, probability: 0.78 },
+        { className: 'Другой язык', probability: 0.15 },
+        { className: 'Третий язык', probability: 0.07 }
+      ];
+      renderVerdict(demoProbs);
+      renderBars(demoProbs);
+    }, 500);
+  } else {
+    predictOn(preview);
+  }
+}
+
+function renderBars(preds) {
+  probsEl.innerHTML = '';
+  const sorted = [...preds].sort((a,b) => b.probability - a.probability);
+  
+  sorted.forEach(p => {
+    const row = document.createElement('div'); 
+    row.className = 'row-prob';
+    
+    const label = document.createElement('div'); 
+    label.className = 'label'; 
+    label.textContent = p.className;
+    
+    const bar = document.createElement('div'); 
+    bar.className = 'bar';
+    
+    const span = document.createElement('span'); 
+    span.style.width = `${(p.probability*100).toFixed(1)}%`;
+    bar.appendChild(span);
+    
+    const val = document.createElement('div'); 
+    val.className = 'val';
+    val.textContent = `${(p.probability*100).toFixed(1)}%`;
+    
+    row.append(label, bar, val);
+    probsEl.appendChild(row);
+  });
+}
+
+function renderVerdict(preds) {
+  const sorted = [...preds].sort((a,b) => b.probability - a.probability);
+  const top1 = sorted[0];
+  const top2 = sorted[1] || { probability: 0 };
+
+  const belowThreshold = top1.probability < THRESHOLD;
+  const margin = top1.probability - top2.probability;
+  const smallMargin = margin < MARGIN_MIN;
+
+  let H = 0;
+  for (const p of preds) {
+    if (p.probability > 0) {
+      H += -p.probability * Math.log(p.probability);
+    }
+  }
+  const highEntropy = H > ENTROPY_MAX;
+
+  verdictEl.style.display = 'block';
+
+  if (belowThreshold || smallMargin || highEntropy) {
+    const reasons = [];
+    if (belowThreshold) reasons.push(`Top-1 ниже порога ${Math.round(THRESHOLD*100)}%`);
+    if (smallMargin) reasons.push(`разрыв Top-1/Top-2 лишь ${(margin*100).toFixed(1)} п.п.`);
+    if (highEntropy) reasons.push(`высокая энтропия ${H.toFixed(2)}`);
+
+    verdictEl.innerHTML = `Итог: <b class="other">Другой язык</b> <span class="muted">(${reasons.join(', ')})</span>`;
+  } else {
+    verdictEl.innerHTML = `Итог: <b>${top1.className}</b> — ${(top1.probability*100).toFixed(1)}% <span class="muted">(разрыв с Top-2: ${(margin*100).toFixed(1)} п.п.)</span>`;
+  }
+}
+
+async function predictOn(el) {
+  if (!model && !isDemoMode) {
+    statusEl.textContent = 'Модель не загружена';
+    return;
+  }
+  
+  try {
+    statusEl.textContent = 'Анализирую изображение...';
+    const preds = await model.predict(el);
+    statusEl.textContent = '';
+    renderVerdict(preds);
+    renderBars(preds);
+  } catch (e) {
+    console.error('Ошибка предсказания:', e);
+    statusEl.textContent = 'Ошибка анализа изображения';
+    showError('Не удалось проанализировать изображение: ' + e.message);
+  }
+}
+
+function updatePrediction() {
+  if (preview.style.display !== 'none') {
+    predictOn(preview);
+  }
+}
+
+// Обработчики событий
+file.onchange = e => {
+  const f = e.target.files?.[0]; 
+  if (!f) return;
+  
+  const url = URL.createObjectURL(f);
+
+  if (raf) cancelAnimationFrame(raf);
+  if (webcam) webcam.stop();
+
+  camWrap.innerHTML = '';
+  preview.style.display = 'block';
+  preview.src = url;
+
+  preview.onload = async () => { 
+    if (!isDemoMode) {
+      await predictOn(preview); 
+    }
+    URL.revokeObjectURL(url); 
+  };
+  
+  preview.onerror = () => { 
+    statusEl.textContent = 'Не удалось прочитать файл.'; 
+    URL.revokeObjectURL(url); 
+  };
+};
+
+btn.onclick = async () => {
+  if (!model && !isDemoMode) {
+    showError('Модель не загружена. Используйте демо-режим или загрузите изображение.');
+    return;
+  }
+  
+  try {
+    if (raf) cancelAnimationFrame(raf);
+    if (webcam) webcam.stop();
+
+    preview.style.display = 'none';
+    webcam = new tmImage.Webcam(224, 224, true);
+    await webcam.setup(); 
+    await webcam.play();
+    camWrap.innerHTML = ''; 
+    camWrap.appendChild(webcam.canvas);
+    
+    if (!isDemoMode) {
+      loop();
+    } else {
+      statusEl.textContent = 'В демо-режиме камера не работает';
+    }
+  } catch (e) {
+    console.error('Ошибка камеры:', e);
+    statusEl.textContent = 'Камера недоступна: ' + e.message;
+    showError('Не удалось получить доступ к камере: ' + e.message);
+  }
+};
+
+async function loop() {
+  if (!webcam) return;
+  
+  webcam.update();
+  await predictOn(webcam.canvas);
+  raf = requestAnimationFrame(loop);
+}
+
+// Очистка при закрытии
+addEventListener('beforeunload', () => {
+  if (raf) cancelAnimationFrame(raf);
+  if (webcam) webcam.stop();
+});
+</script>
