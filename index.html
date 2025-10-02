@@ -229,7 +229,7 @@ document.getElementById('th').addEventListener('input', e => {
 (async () => {
     try {
       statusEl.innerHTML = '🔄 Загружаю модель...';
-      model = await tmImage.load(`model.json`, `metadata.json`);
+      model = await tmImage.load(`./model.json`, `./metadata.json`);
       statusEl.innerHTML = '✅ Модель загружена! Выберите файл или запустите камеру';
     } catch (e) {
       statusEl.innerHTML = '❌ Ошибка загрузки модели';
@@ -436,4 +436,5 @@ addEventListener('beforeunload', () => {
   if (raf) cancelAnimationFrame(raf);
   if (webcam) webcam.stop();
 });
+
 </script>
